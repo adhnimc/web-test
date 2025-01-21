@@ -1,0 +1,363 @@
+---
+title: "nycflights13"
+author: "Adhni Mulachela"
+#date: "2025-10-10"
+categories: [Article]
+knitr:
+  opts_chunk:
+    echo: false
+    warning: false
+    messsage: false
+---
+
+Using the nycflights13 dataset, this analysis examines flight patterns from New York’s three major airports: JFK, LGA, and EWR. Visualizations include pie charts showing airline proportions, line charts of flights by hour, and interactive maps of routes, providing insights into departure trends and airline operations.
+
+```{r, message=FALSE,warning=FALSE}
+# Load the libraries
+library(nycflights13)
+library(dplyr)
+library(leaflet)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+flights <- flights
+```
+
+
+
+```{r}
+
+
+# Define the top 5 airlines
+top_airlines <- c("United Air Lines Inc.", "American Airlines Inc.", "Delta Air Lines Inc.", 
+                  "Southwest Airlines Co.", "JetBlue Airways")
+
+# Updated airline colors for better distinction
+airline_colors <- c(
+  "United Air Lines Inc." = "#1A1F71",  # Deep blue for United
+  "American Airlines Inc." = "#E63946",  # Light orange-red for American
+  "Delta Air Lines Inc." = "#9B2335",  # Crimson red for Delta
+  "Southwest Airlines Co." = "#FFBF27",  # Golden yellow for Southwest
+  "JetBlue Airways" = "#007FFF",  # Bright sky blue for JetBlue
+  "Others" = "#808080"  # Neutral gray for Others
+)
+
+# Prepare data
+plot_data <- flights %>%
+  filter(origin %in% c("JFK", "LGA", "EWR")) %>%
+  left_join(airlines, by = "carrier") %>%
+  mutate(airline_name = ifelse(name %in% top_airlines, name, "Others")) %>%
+  group_by(origin, airline_name) %>%
+  summarise(
+    total_flights = n(),
+    avg_flights_per_day = round(total_flights / 365, 1),  # Average flights per day
+    .groups = "drop"
+  )
+
+# Function to create a pie chart for a specific airport
+create_pie_chart <- function(airport) {
+  plot_data %>%
+    filter(origin == airport) %>%
+    plot_ly(
+      labels = ~airline_name,
+      values = ~avg_flights_per_day,
+      type = "pie",
+      textinfo = "label",  # Show only airline name in the chart
+      hoverinfo = "label+text",  # Hover shows airline name and average flights per day
+      text = ~paste("<br>Avg Flights/Day:", avg_flights_per_day),
+      marker = list(colors = airline_colors[plot_data$airline_name]),  # Consistent airline colors
+      title = paste("<b>Proportion of Flights by Airline -", airport, "</b>"),  # Bold and clear title
+      titlefont = list(size = 24)  # Larger font size for the title
+    ) %>%
+    layout(
+      title = list(font = list(size = 28)),  # Larger font size for better visibility
+      legend = list(font = list(size = 14))  # Make the legend text slightly bigger for clarity
+    )
+}
+
+# Create pie charts for each airport
+jfk_chart <- create_pie_chart("JFK")
+lga_chart <- create_pie_chart("LGA")
+ewr_chart <- create_pie_chart("EWR")
+
+# Display the charts
+jfk_chart
+lga_chart
+ewr_chart
+
+
+```
+
+
+```{r}
+# Step 1: Join airline names and rename to avoid conflicts
+flights_subset <- flights %>%
+  filter(
+    !dest %in% c("HNL", "ANC"),  # Exclude Honolulu and Anchorage
+    carrier %in% c("AA", "DL", "UA", "B6", "WN")  # Keep only selected airlines
+  ) %>%
+  left_join(airlines, by = c("carrier" = "carrier")) %>%
+  rename(airline_name = name)  # Rename airline name column to avoid conflict with airport names
+
+# Step 2: Summarize flights by destination and airline
+flights_summary <- flights_subset %>%
+  group_by(dest, airline_name) %>%
+  summarise(total_flights = n(), .groups = "drop") %>%
+  group_by(dest) %>%
+  mutate(
+    dominant_airline_name = airline_name[which.max(total_flights)],  # Determine dominant airline by name
+    total_flights = sum(total_flights),  # Total flights to the destination
+    avg_flights_per_day = round(total_flights / 365, 1)  # Average flights per day (1 decimal place)
+  ) %>%
+  filter(total_flights >= 365)  # Keep destinations with at least 2000 flights
+
+# Step 3: Add geolocation data for destinations using the airports dataset
+flights_map_data <- flights_summary %>%
+  left_join(airports, by = c("dest" = "faa"))  # Join with airports dataset
+
+# Step 4: Add LGA coordinates as the origin point for all lines
+lga_coordinates <- airports %>%
+  filter(faa == "LGA") %>%
+  select(lat, lon) %>%
+  rename(lga_lat = lat, lga_lon = lon)
+
+# Ensure LGA coordinates and hover text are added to flights_map_data
+flights_map_data <- flights_map_data %>%
+  mutate(
+    lga_lat = lga_coordinates$lga_lat[1],  # Add LGA latitude
+    lga_lon = lga_coordinates$lga_lon[1],  # Add LGA longitude
+    hover_text = paste(
+      "Destination:", name,  # Full airport name
+      "<br>Dominant Airline:", dominant_airline_name,  # Dominant airline name
+      "<br>Avg Flights/Day (All Airlines):", avg_flights_per_day  # Average flights per day
+    )
+  )
+
+# Step 5: Plot the map without labels for airport codes
+map <- ggplot() +
+  borders("state", colour = "grey80", fill = "grey95") +  # Light grey land and subtle borders
+  geom_point(
+    data = flights_map_data,
+    aes(
+      x = lon, y = lat, color = dominant_airline_name, size = total_flights,
+      text = hover_text  # Explicitly set hover text for Plotly
+    ),
+    alpha = 0.8  # Slight transparency for points
+  ) +
+  geom_segment(
+    data = flights_map_data,
+    aes(
+      x = lga_lon, y = lga_lat, xend = lon, yend = lat,
+      color = dominant_airline_name,
+      text = hover_text  # Explicitly set hover text for Plotly
+    ),
+    size = 0.5, alpha = 0.6  # Softer and thinner lines
+  ) +
+  scale_color_viridis_d(name = "Dominant Airline", option = "D") +  # Use the viridis palette
+  scale_size_continuous(name = "Total Flights", range = c(2, 6)) +  # Scale point sizes
+  coord_cartesian(xlim = c(-125, -66), ylim = c(24, 50)) +  # Continental US
+  labs(
+    title = "Dominant Airline from NYC by Destinations",
+    subtitle = "Color-coded by Dominant Airline Name | Point size proportional to total flights",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal(base_size = 14) +  # Modern and clean theme
+  theme(
+    plot.title = element_text(face = "bold", size = 16, color = "black"),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10), color = "black"),
+    legend.position = "right",
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    panel.background = element_rect(fill = "white", colour = NA),  # White background
+    plot.background = element_rect(fill = "white", color = NA),  # Match overall plot background
+    panel.border = element_blank(),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    axis.ticks = element_blank()
+  )
+
+# Step 6: Convert the ggplot to Plotly with explicit hover text
+interactive_map <- ggplotly(
+  map,
+  tooltip = "text"  # Explicitly map the hover text field
+)
+
+# Step 7: Display the interactive map
+interactive_map
+
+```
+
+```{r}
+# Step 1: Filter flights and rename columns for clarity
+flights_subset <- flights %>%
+  filter(
+    !dest %in% c("HNL", "ANC")  # Exclude Honolulu and Anchorage
+  ) %>%
+  left_join(airports, by = c("origin" = "faa")) %>%
+  rename(origin_name = name)  # Rename origin airport name to avoid conflicts
+
+# Step 2: Summarize flights by destination and origin airport
+flights_summary <- flights_subset %>%
+  group_by(dest, origin) %>%
+  summarise(total_flights = n(), .groups = "drop") %>%
+  group_by(dest) %>%
+  mutate(
+    dominant_origin = origin[which.max(total_flights)],  # Determine dominant origin airport
+    total_flights = sum(total_flights),  # Total flights to the destination
+    avg_flights_per_day = round(total_flights / 365, 1)  # Average flights per day (1 decimal place)
+  ) %>%
+  filter(total_flights >= 365)  # Keep destinations with at least 365 flights
+
+# Step 3: Add geolocation data for destinations using the airports dataset
+flights_map_data <- flights_summary %>%
+  left_join(airports, by = c("dest" = "faa")) %>%
+  left_join(airports, by = c("dominant_origin" = "faa"), suffix = c("_dest", "_origin"))
+
+# Step 4: Add LGA coordinates as the neutral origin point
+lga_coordinates <- airports %>%
+  filter(faa == "LGA") %>%
+  select(lat, lon) %>%
+  rename(lga_lat = lat, lga_lon = lon)
+
+# Add hover text and LGA coordinates to the data
+flights_map_data <- flights_map_data %>%
+  mutate(
+    lga_lat = lga_coordinates$lga_lat[1],  # Add LGA latitude
+    lga_lon = lga_coordinates$lga_lon[1],  # Add LGA longitude
+    hover_text = paste(
+      "Destination:", name_dest,  # Full destination airport name
+      "<br>Dominant Origin Airport:", name_origin,  # Dominant origin airport name
+      "<br>Avg Flights/Day (All Origins):", avg_flights_per_day  # Average flights per day
+    )
+  )
+
+# Step 5: Plot the map based on origin airports
+map <- ggplot() +
+  borders("state", colour = "grey80", fill = "grey95") +  # Light grey land and subtle borders
+  geom_point(
+    data = flights_map_data,
+    aes(
+      x = lon_dest, y = lat_dest, color = name_origin, size = total_flights,
+      text = hover_text  # Explicitly set hover text for Plotly
+    ),
+    alpha = 0.8  # Slight transparency for points
+  ) +
+  geom_segment(
+    data = flights_map_data,
+    aes(
+      x = lga_lon, y = lga_lat, xend = lon_dest, yend = lat_dest,
+      color = name_origin,
+      text = hover_text  # Explicitly set hover text for Plotly
+    ),
+    size = 0.5, alpha = 0.6  # Softer and thinner lines
+  ) +
+  scale_color_viridis_d(name = "Dominant Origin Airport", option = "D") +  # Use the viridis palette
+  scale_size_continuous(name = "Total Flights", range = c(2, 6)) +  # Scale point sizes
+  coord_cartesian(xlim = c(-125, -66), ylim = c(24, 50)) +  # Continental US
+  labs(
+    title = "Dominant NYC Airports by Destinations",
+    subtitle = "Color-coded by Dominant Origin Airport | Point size proportional to total flights",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal(base_size = 14) +  # Modern and clean theme
+  theme(
+    plot.title = element_text(face = "bold", size = 16, color = "black"),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10), color = "black"),
+    legend.position = "right",
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    panel.background = element_rect(fill = "white", colour = NA),  # White background
+    plot.background = element_rect(fill = "white", color = NA),  # Match overall plot background
+    panel.border = element_blank(),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black"),
+    axis.ticks = element_blank()
+  )
+
+# Step 6: Convert the ggplot to Plotly with explicit hover text
+interactive_map <- ggplotly(
+  map,
+  tooltip = "text"  # Explicitly map the hover text field
+)
+
+# Step 7: Display the interactive map
+interactive_map
+
+```
+
+
+
+
+
+```{r}
+# Prepare data: Average count of flights per day by hour (filter hour 5 to 24)
+flights_by_time <- flights %>%
+  filter(origin %in% c("JFK", "LGA", "EWR")) %>%
+  mutate(hour = sched_dep_time %/% 100) %>%  # Extract the hour from sched_dep_time
+  filter(hour >= 5 & hour <= 24) %>%  # Filter for hours 5 to 24
+  group_by(origin, hour) %>%
+  summarise(
+    avg_flights_per_day = round(n() / 365, 1),  # Calculate average flights per day
+    .groups = "drop"
+  )
+
+# Create the line chart
+plot <- ggplot(flights_by_time, aes(x = hour, y = avg_flights_per_day, color = origin, group = origin)) +
+  geom_line(size = 1.2, alpha = 0.8) +  # Add lines for each airport
+  geom_point(size = 2, aes(text = paste(
+    "Airport:", origin,
+    "<br>Hour:", hour,
+    "<br>Avg Flights/Day:", avg_flights_per_day
+  ))) +  # Add hoverable points
+  scale_color_manual(
+    values = c(
+      "JFK" = "#1A1F71",  # United-style deep blue for JFK
+      "LGA" = "#E63946",  # American-style light red for LGA
+      "EWR" = "#007FFF"   # JetBlue-style bright blue for EWR
+    ),
+    name = "Airport"
+  ) +
+  scale_x_continuous(breaks = seq(5, 24, by = 1), limits = c(5, 24)) +  # Show hours 5 to 24 on x-axis
+  labs(
+    title = "Average Flights Departed by Hour",
+    subtitle = "Across JFK, LGA, and EWR Airports",
+    x = "Hour of the Day",
+    y = "Average Flights Per Day",
+    color = "Airport"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20, color = "black"),
+    plot.subtitle = element_text(size = 14, color = "black"),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),  # Keep x-axis labels horizontal
+    legend.position = "right",
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank()
+  )
+
+# Convert to an interactive Plotly chart
+interactive_plot <- ggplotly(plot, tooltip = "text") %>%
+  layout(
+    hoverlabel = list(
+      bgcolor = "white",  # White background for hover labels
+      font = list(size = 12, color = "black"),  # Professional font styling
+      bordercolor = "lightgray"
+    )
+  )
+
+# Display the interactive chart
+interactive_plot
+
+```
+
+
+
+
+

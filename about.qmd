@@ -1,0 +1,27 @@
+---
+title: "About Me"
+image: profile.jpg
+---
+
+
+::: {style="text-align: center;"}
+<img src="profile.jpeg" alt="Profile Photo" style="width: 600px; height: auto; max-width: 100%;"/>
+:::
+
+
+
+<div style="text-align: center; font-size: 1.5em;">
+  <a href="https://github.com/adhni" style="text-decoration: none; margin: 0 15px;">
+    <strong>Github</strong>
+    <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="Github" style="width: 40px; margin-left: 5px;"/>
+  </a>
+  <a href="https://www.linkedin.com/in/adhni/" style="text-decoration: none; margin: 0 15px;">
+    <strong>LinkedIn</strong>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn" style="width: 40px; margin-left: 5px;"/>
+  </a>
+</div>
+
+Welcome to my personal website! I’m Adhni Mulachela, originally from Indonesia. I’m currently pursuing a Master of Business Analytics at Monash University.
+
+I have experience working in the tech and logistics industry, where I’ve developed skills that complement my academic pursuits. You can view my resume in the top right corner of the page for more professional details about me. Here, you’ll also find a mix of my assignments under the tag “assignment” and some of my thoughts on various topics under the tag “dumps.” Feel free to explore my work and professional profiles below!
+

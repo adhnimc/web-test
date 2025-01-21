@@ -1,0 +1,120 @@
+---
+title: "Acartia"
+editor: visual
+---
+
+```{r}
+library(readr)
+convertcsv <- read_csv("~/Downloads/convertcsv.csv")
+
+
+convertcsv <- read_csv("~/Downloads/acartia-export.csv")
+View(acartia_export)
+```
+
+```{r}
+
+library(ggplot2)
+library(ggmap)
+library(dplyr)
+library(leaflet)
+
+# Prepare your data (filtering out rows with NA latitude or longitude)
+sightings <- convertcsv %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  select(latitude, longitude, type)  # Adjust columns as needed
+
+# Get a map centered around the average coordinates of the sightings
+map <- get_map(location = c(lon = mean(sightings$longitude), lat = mean(sightings$latitude)),
+               zoom = 6, maptype = "terrain")
+
+# Plot the sightings on the map using ggplot2
+ggmap(map) +
+  geom_point(data = sightings, aes(x = longitude, y = latitude, color = type),
+             size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("Gray Whale" = "blue", "Orca" = "red", "Humpback Whale" = "green")) +
+  labs(title = "Whale Sightings", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+# Alternatively, create an interactive map with leaflet
+leaflet(sightings) %>%
+  addTiles() %>%
+  addCircleMarkers(~longitude, ~latitude, color = ~factor(type),
+                   popup = ~paste("<b>Type:</b>", type),
+                   radius = 5, fillOpacity = 0.8)
+
+```
+```{r}
+# Prepare your data (filtering out rows with missing date and type)
+sightings <- convertcsv %>%
+  filter(!is.na(created), !is.na(type)) %>%
+  select(created, type)  # Adjust columns as needed
+
+# Make sure the 'created' column is in POSIXct format (if not already)
+sightings$created <- as.POSIXct(sightings$created)
+
+# Plot sightings by date, colored by type
+ggplot(sightings, aes(x = created, color = type)) +
+  geom_freqpoly(binwidth = 86400, size = 1) +  # binwidth = 86400 sec = 1 day
+  scale_color_manual(values = c("Gray Whale" = "blue", "Orca" = "red", "Humpback Whale" = "green")) +
+  labs(title = "Whale Sightings by Date", x = "Date", y = "Frequency") +
+  theme_minimal() +
+  theme(legend.title = element_blank())  # Optional
+```
+```{r}
+library(plotly)
+
+# Create an interactive plot with plotly
+p <- ggplot(sightings, aes(x = created, color = type)) +
+  geom_freqpoly(binwidth = 86400, size = 1) +  # 1-day binwidth
+  scale_color_manual(values = c("Gray Whale" = "blue", "Orca" = "red", "Humpback Whale" = "green")) +
+  labs(title = "Whale Sightings by Date", x = "Date", y = "Frequency") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+# Convert ggplot to a plotly object for interactivity
+ggplotly(p)
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(ggmap)
+library(dplyr)
+library(leaflet)
+library(lubridate)
+
+# Prepare your data (filtering out rows with NA latitude or longitude)
+sightings <- convertcsv %>%
+  filter(!is.na(latitude), !is.na(longitude), !is.na(created)) %>%  # Ensure 'created' is not NA
+  mutate(year = year(as.POSIXct(created))) %>%  # Extract the year from the 'created' column
+  filter(year >= 2018) %>%  # Optionally, filter data to include only sightings from 2018 onwards
+  select(latitude, longitude, type, year)  # Keep the relevant columns
+
+# Define a color palette for the years (you can customize the colors as needed)
+year_colors <- scale_color_manual(values = c("2018" = "blue", "2019" = "green", "2020" = "red", "2021" = "purple", "2022" = "orange", "2023" = "brown"))
+
+# Get a map centered around the average coordinates of the sightings
+map <- get_map(location = c(lon = mean(sightings$longitude), lat = mean(sightings$latitude)),
+               zoom = 6, maptype = "terrain")
+
+# Plot the sightings on the map using ggplot2, colored by year
+ggmap(map) +
+  geom_point(data = sightings, aes(x = longitude, y = latitude, color = as.factor(year)),
+             size = 3, alpha = 0.7) +
+  year_colors +  # Apply the color scale based on the year
+  labs(title = "Whale Sightings by Year", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+# Alternatively, create an interactive map with leaflet, colored by year
+leaflet(sightings) %>%
+  addTiles() %>%
+  addCircleMarkers(~longitude, ~latitude, color = ~factor(year),  # Use factor(year) to color by year
+                   popup = ~paste("<b>Year:</b>", year, "<br><b>Type:</b>", type),
+                   radius = 5, fillOpacity = 0.8) %>%
+  addLegend("bottomright", pal = colorFactor(c("blue", "green", "red", "purple", "orange", "brown"), domain = sightings$year), values = sightings$year,
+            title = "Year", opacity = 1)
+
+```
+

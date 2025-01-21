@@ -1,0 +1,153 @@
+---
+title: "walking dist"
+editor: visual
+execute:
+  echo: false    # Hide all code
+  warning: false # Suppress warnings
+  message: false # Suppress messages
+  error: false   # Suppress errors
+---
+
+```{r Loading Libraries}
+# Load required libraries
+library(ggmap)
+library(ggplot2)
+library(gmapsdistance)
+
+```
+
+```{r API Key}
+# Register your Google API key
+register_google(key = "AIzaSyDUI7z1cNNuK5kxppPjsF1p8-u3pDLZZT4") # Using your API key
+```
+
+
+```{r Fill In Adress}
+center_address <- "Kemilau Villa Umalas Bali"
+```
+
+```{r Cordinate Processing}
+
+# Use geocode to get latitude and longitude of the address
+center_coordinates <- geocode(center_address)
+
+# Extract latitude and longitude
+center_lat <- center_coordinates$lat
+center_lon <- center_coordinates$lon
+```
+```{r Calculating distance using Google API}
+# Convert 100 meters to degrees
+meters_to_degrees_lat <- 100 / 111320
+meters_to_degrees_lon <- 100 / (111320 * cos(center_lat * pi / 180))
+
+# Generate a larger grid (8x8 = 64 points, with 100 meters spacing)
+grid_lat <- seq(center_lat - 4.5 * meters_to_degrees_lat, center_lat + 4.5 * meters_to_degrees_lat, by = meters_to_degrees_lat)
+grid_lon <- seq(center_lon - 4.5 * meters_to_degrees_lon, center_lon + 4.5 * meters_to_degrees_lon, by = meters_to_degrees_lon)
+
+# Create a data frame of all combinations of lat/lon
+points_around <- expand.grid(lat = grid_lat, lon = grid_lon)
+
+# Initialize a column for walking distances
+points_around$walking_distance_m <- NA
+
+# Calculate walking distances
+for (i in 1:nrow(points_around)) {
+  origin <- paste(points_around$lat[i], points_around$lon[i], sep = ",")
+  destination <- paste(center_lat, center_lon, sep = ",")
+  
+  # Use Google Distance Matrix API to calculate walking distance
+  result <- google_distance(
+    key = "AIzaSyDUI7z1cNNuK5kxppPjsF1p8-u3pDLZZT4", # Using your API key
+    origin = origin,
+    destination = destination,
+    mode = "walking"
+  )
+  
+  # Extract walking distance in meters
+  if (!is.null(result$rows$elements[[1]]$distance$value)) {
+    points_around$walking_distance_m[i] <- result$rows$elements[[1]]$distance$value
+  } else {
+    points_around$walking_distance_m[i] <- NA  # Assign NA if the API response is invalid
+  }
+}
+```
+
+```{r Getting Map from Google Map}
+# Get a map centered on Melbourne Central
+melbourne_map <- get_map(
+  location = c(lon = center_lon, lat = center_lat),
+  zoom = 16,
+  maptype = "roadmap"
+)
+```
+```{r Creating Map Plot}
+# Cap walking distances at 500 meters for the gradient scale
+points_around$capped_distance <- pmin(points_around$walking_distance_m, 1000)
+
+# Plot the map with a gradient color scale capped at 500 meters
+ggmap_plot <- ggmap(melbourne_map) +
+  geom_tile(data = points_around, aes(x = lon, y = lat, fill = capped_distance), alpha = 0.6) +
+  scale_fill_gradient(low = "green", high = "red", na.value = "gray") +
+  #ggtitle("Walking Distances to Melbourne Central") +
+  theme_minimal() +
+  labs(fill = "Distance (m)")
+```
+
+```{r Barchart}
+# Cap the walking distances at 1000 meters
+points_around$walking_distance_capped <- ifelse(points_around$walking_distance_m > 1000, 1000, points_around$walking_distance_m)
+
+# Total number of points for calculating percentages
+total_points <- nrow(points_around)
+
+# Create a histogram with count or percentage
+barchart <- ggplot(points_around, aes(x = walking_distance_capped)) +
+  geom_histogram(
+    aes(y = ..count.., fill = ..x.. > 999), # Use count for y-axis
+    binwidth = 100,
+    color = "black",
+    boundary = 0
+  ) +
+  scale_fill_manual(
+    values = c("FALSE" = "skyblue", "TRUE" = "red"),
+    labels = c("≤1000", ">1000"),
+    guide = "none"
+  ) +
+  labs(
+    title = "Walking Distances to Melbourne Central",
+    x = "Walking Distance (m)",
+    y = "Count of Points"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1000, by = 100),
+    labels = c(seq(0, 900, by = 100), "1000+")
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+
+```
+
+```{r Summary Stat}
+# Calculate summary statistics
+summary_stats <- data.frame(
+  Statistic = c("Mean", "Median", "IQR", "Range"),
+  Value = c(
+    mean(points_around$walking_distance_m, na.rm = TRUE),  # Mean
+    median(points_around$walking_distance_m, na.rm = TRUE), # Median
+    IQR(points_around$walking_distance_m, na.rm = TRUE),    # IQR
+    diff(range(points_around$walking_distance_m, na.rm = TRUE)) # Range
+  )
+)
+```
+
+
+```{r Display}
+center_address
+ggmap_plot
+ggplotly(ggmap_plot)
+barchart
+(summary_stats)
+```
+

@@ -1,0 +1,24 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Adhni Mulachela"
+  reader-mode: false
+  navbar:
+    left:
+      - text: Home
+        href: index.qmd
+    right:
+      - about.qmd
+      - icon: github
+        href: https://github.com/adhni
+      - icon: linkedin
+        href: https://www.linkedin.com/in/adhni/
+      - text: Resume
+        href: resume.pdf
+
+format:
+  html:
+    theme: flatly
+    css: styles.css
